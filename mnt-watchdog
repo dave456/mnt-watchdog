@@ -1,0 +1,127 @@
+#!/bin/bash
+
+# mount config variables
+EAST_LIMIT="7509573"
+WEST_LIMIT="11698968"
+
+# by default we assume running on same host as indiserver - it can be run remotely as well
+HOST="localhost"
+PORT="7624"
+
+#
+# retrieve the RAStep value from mount
+#
+getRAStep()
+{
+    echo `indi_getprop -h ${HOST} -p ${PORT} 'EQMod Mount.CURRENTSTEPPERS.RAStepsCurrent' 2>/dev/null | awk -F= '{ print $2 }'`
+}
+
+#
+# Silly routine to help user set proper config values
+#
+configure()
+{
+    echo
+    echo "Move mount to park position to center. Then move mount the maximum desired EAST position."
+    echo -n "Press enter when EAST max position confirmed."
+    read empty
+    echo
+    newEastLimit=`getRAStep`
+
+    echo "Move mount to maximum desired WEST position."
+    echo -n "Press enter when max WEST postion confirmed."
+    read empty
+    echo
+    newWestLimit=`getRAStep`
+
+    echo "Edit the config variables in the top of this script and replace them"
+    echo "with the following values:"
+    echo
+    echo EAST_LIMIT=\"$newEastLimit\"
+    echo WEST_LIMIT=\"$newWestLimit\"
+}
+
+monitor()
+{
+    # local variables
+    ABORTED=""
+    MONITOR=""
+    IN_RECOVERY=""
+
+    while : ; do
+	RASTEP=`getRAStep`
+
+	# stepper values not set when its not connected to kstars/ekos
+	if [[ -z ${RASTEP} ]] ; then
+	    echo -n "Mount/Ekos not connected - sleeping"
+	    
+	    # clear any outstanding states
+	    ABORTED=""
+	    MONITOR=""
+
+	    # tight loop waiting for connections
+	    while : ; do
+		sleep 10
+		echo -n "."
+		RASTEP=`getRAStep`
+		if [[ ! -z ${RASTEP} ]] ; then
+		    echo
+		    break
+		fi
+	    done
+	fi
+
+	# ABORT recovery state machine
+	if [[ ${ABORTED} ==  "TRUE" ]] ; then
+	    if [[ ${RASTEP} -lt ${EAST_LIMIT} ]] || [[ ${RASTEP} -gt ${WEST_LIMIT} ]] ; then
+		# if we've aborted the move, and we're still in a bad position - do nothing
+		# potentially we could send more aborts? Park? That seems obnoxious. Just let the
+		# user know, we are still in a bad state.
+		if [[ -z ${IN_RECOVERY} ]] ; then
+		    IN_RECOVERY="TRUE"
+		    echo -n "Waiting for recovery"
+		fi
+		echo -n "."
+		sleep 5
+		continue
+	    else
+		# if we were aborted, but now we're in an ok condition, clear abort, and
+		# continue to monitor
+		ABORTED=""
+		IN_RECOVERY=""
+		echo
+		echo "Illegal position cleared - resume monitoring"
+		continue
+	    fi
+	fi
+
+	# let user know we've started monitoring
+	if [[ -z ${MONITOR} ]] ; then
+	    MONITOR="TRUE"
+	    echo "*** Monitoring mount ***"
+	fi
+	
+	# check our limits
+	# indi_eval should be the clear choice here, but it doesn't behave as well under error conditions
+	# this loop obnoxiously connects/disconnects, but otherwise works flawlessly
+	if [[ ${RASTEP} -lt ${EAST_LIMIT} ]] || [[ ${RASTEP} -gt ${WEST_LIMIT} ]] ; then
+	    #indi_setprop -h ${HOST} -p ${PORT} -s 'EQMod Mount.TELESCOPE_ABORT_MOTION.ABORT=On'
+	    indi_setprop -h ${HOST} -p ${PORT} -s 'EQMod Mount.TELESCOPE_PARK.PARK=On'
+
+	    echo
+	    echo "*** MOVE ABORTED ***"
+	    echo
+	    echo "   Park telescope or manually move telescope out of invalid position."
+	    echo "   Monitoring DISABLED until telescope position is cleared."
+	    echo
+
+	    ABORTED="TRUE"
+	    MONITOR=""
+	fi
+
+	sleep 1
+    done
+}
+
+#configure
+monitor
