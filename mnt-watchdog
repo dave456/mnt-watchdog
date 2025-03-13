@@ -1,12 +1,10 @@
 #!/bin/bash
 
-# mount config variables
-EAST_LIMIT="7509573"
-WEST_LIMIT="11698968"
 
 # by default we assume running on same host as indiserver - it can be run remotely as well
 HOST="localhost"
 PORT="7624"
+CONFIG_FILE="$HOME/.mntwdconfig"
 
 #
 # retrieve the RAStep value from mount
@@ -17,12 +15,12 @@ getRAStep()
 }
 
 #
-# Silly routine to help user set proper config values
+# help user set proper config values
 #
 configure()
 {
     echo
-    echo "Move mount to park position to center. Then move mount the maximum desired EAST position."
+    echo "Move mount to park position to center, then move mount to the maximum desired EAST position."
     echo -n "Press enter when EAST max position confirmed."
     read empty
     echo
@@ -34,15 +32,24 @@ configure()
     echo
     newWestLimit=`getRAStep`
 
-    echo "Edit the config variables in the top of this script and replace them"
-    echo "with the following values:"
-    echo
-    echo EAST_LIMIT=\"$newEastLimit\"
-    echo WEST_LIMIT=\"$newWestLimit\"
+    echo "Updating config file with new limits..."
+    if [[ -f "${CONFIG_FILE}" ]] ; then
+        mv ${CONFIG_FILE} ${CONFIG_FILE}-old
+    fi
+    echo EAST_LIMIT=\"$newEastLimit\" > ${CONFIG_FILE}
+    echo WEST_LIMIT=\"$newWestLimit\" >> ${CONFIG_FILE}
 }
 
 monitor()
 {
+    # check for config file
+    if [[ -f ${CONFIG_FILE} ]] ; then
+    	. ${CONFIG_FILE}
+    else
+	echo "mount watchdog not configured, run with -configure option"
+        exit 1
+    fi
+
     # local variables
     ABORTED=""
     MONITOR=""
@@ -105,8 +112,7 @@ monitor()
 	# indi_eval should be the clear choice here, but it doesn't behave as well under error conditions
 	# this loop obnoxiously connects/disconnects, but otherwise works flawlessly
 	if [[ ${RASTEP} -lt ${EAST_LIMIT} ]] || [[ ${RASTEP} -gt ${WEST_LIMIT} ]] ; then
-	    #indi_setprop -h ${HOST} -p ${PORT} -s 'EQMod Mount.TELESCOPE_ABORT_MOTION.ABORT=On'
-	    indi_setprop -h ${HOST} -p ${PORT} -s 'EQMod Mount.TELESCOPE_PARK.PARK=On'
+	    indi_setprop -h ${HOST} -p ${PORT} -s 'EQMod Mount.TELESCOPE_ABORT_MOTION.ABORT=On'
 
 	    echo
 	    echo "*** MOVE ABORTED ***"
@@ -123,5 +129,9 @@ monitor()
     done
 }
 
-#configure
-monitor
+# some weak sauce arg parser...
+if [[ "$1" == "-configure" ]] ; then
+    configure
+else
+    monitor
+fi
