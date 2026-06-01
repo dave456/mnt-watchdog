@@ -1,0 +1,8 @@
+{
+  "files.eol": "\n",
+  "editor.detectIndentation": false,
+  "[shellscript]": {
+    "editor.insertSpaces": true,
+    "editor.tabSize": 4
+  }
+}
