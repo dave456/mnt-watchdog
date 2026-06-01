@@ -34,6 +34,7 @@ Before implementing:
 | File | Description |
 |------|-------------|
 | mnt-watchdog | Script that monitors the absolute position of a mount and checks the east and west maximum positions. If these positions are exceeded, it sends an abort request to the mount. |
+| mnt-watchdog.py | Python script that implements the functionality of mnt-watchdog. |
 
 ## Python Script Conventions
 
